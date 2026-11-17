@@ -50,6 +50,30 @@ Deviations and design gaps (reported, not silently adapted):
 5. **A long result reused as an operand** (over 64 characters, e.g. `2 ^ 1000`)
    is rejected by the API with `OPERAND_TOO_LONG`; the UI shows F-24.
 
+Found during implementation:
+
+6. **`entered` state field.** Not in the original field table. Without it
+   `12 ÷ 0 =` (sent) cannot be told from `12 ÷ =` (F-15), because the entry is
+   `"0"` in both and the status is typing in both.
+7. **Files outside the slice lists.** `e2e/tsconfig.json` (slice 12) and a
+   focus-ring rule for the calculator container in `calculator.css` (slice 10,
+   needed by deviation 2).
+8. **Makefile install targets.** `frontend/node_modules` and `e2e/node_modules`
+   run `npm ci`, so `make test` and `make e2e` work from a clean clone.
+9. **Extra e2e tests.** Square root of a negative number and one calculation at
+   the mobile viewport, on top of the list in slice 12.
+10. **Plain-text 404 and 405.** The router's default answers are not JSON; the
+    JSON content type in section 2 applies to the calculate handler's responses.
+11. **Lenient JSON decoding.** A body of `null` is `UNKNOWN_OPERATION`, a `null`
+    operand is `INVALID_OPERAND`, and field names match case-insensitively
+    (`encoding/json` defaults).
+12. **Placeholder in the static embed.** `.gitkeep` is embedded with `dist/`,
+    so it is served at `/.gitkeep`, and a checkout without a frontend build
+    shows a directory listing at `/`.
+13. **Attribute and class queries in two UI tests.** F-19 looks up the
+    `aria-hidden` progress bar and F-23 compares the result's class name,
+    because neither is reachable by role or label.
+
 Out of scope: expression parsing, operator precedence, history, memory keys,
 auth, persistence, an in-app theme toggle, i18n.
 
@@ -86,7 +110,8 @@ Request   {"operation": "add", "operands": ["0.1", "0.2"]}
 | 422 | `UNSUPPORTED_EXPONENT` | Exponent is not an integer in `[-1000, 1000]` |
 | 500 | `INTERNAL` | Anything unexpected |
 
-All responses, including errors, are `Content-Type: application/json`.
+All responses of the calculate handler, including errors, are
+`Content-Type: application/json`. The router's default 404 and 405 are plain text.
 
 ## 3. Backend behaviors
 
@@ -188,6 +213,7 @@ One `useReducer`. Display states match the design: `idle`, `typing`, `loading`,
 | --- | --- |
 | `status` | One of the five states |
 | `entry` | The number being typed, as a string (`"0"` when empty) |
+| `entered` | Whether the entry was typed, which tells a typed `0` from an empty entry |
 | `first` | First operand once a binary operator is chosen |
 | `operator` | Selected binary operator, if any |
 | `expression` | Text of the expression line |

@@ -27,7 +27,7 @@ share no code, so a root Makefile is enough.
 - Operations live in a `map[string]Operation` registry: adding one is a single entry plus its tests.
 - Sentinel errors in `calculator` (`ErrDivisionByZero`, `ErrNegativeSqrt`, ...); the handler maps them with `errors.Is`.
 - Error contract: `{"error": {"code": "DIVISION_BY_ZERO", "message": "..."}}`.
-  400 for malformed requests, 422 for valid requests with a math error.
+  400 for malformed requests, 413 for a body over 1024 bytes, 422 for valid requests with a math error.
 - Numbers: `shopspring/decimal`, operands and results as JSON strings. No `float64` in the calculation path.
   Division and square root use a fixed, documented precision.
 - Limit body size, reject unknown JSON fields, set server timeouts, shut down gracefully.
