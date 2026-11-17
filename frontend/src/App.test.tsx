@@ -582,3 +582,283 @@ describe("App", () => {
     });
   });
 });
+
+describe("App keyboard", () => {
+  const DIGIT_SHORTCUTS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => ({
+    label: digit,
+    keys: digit,
+    keyName: digit,
+    setup: ["1"],
+  }));
+
+  const SHORTCUTS = [
+    ...DIGIT_SHORTCUTS,
+    { label: ".", keys: ".", keyName: "Decimal point", setup: ["1"] },
+    { label: ",", keys: ",", keyName: "Decimal point", setup: ["1"] },
+    { label: "+", keys: "+", keyName: "Add", setup: ["1", "2"] },
+    { label: "-", keys: "-", keyName: "Subtract", setup: ["1", "2"] },
+    { label: "*", keys: "*", keyName: "Multiply", setup: ["1", "2"] },
+    { label: "/", keys: "/", keyName: "Divide", setup: ["1", "2"] },
+    { label: "^", keys: "^", keyName: "Power", setup: ["1", "2"] },
+    { label: "r", keys: "r", keyName: "Square root", setup: ["9"] },
+    { label: "%", keys: "%", keyName: "Percent of", setup: ["1", "2"] },
+    { label: "F9", keys: "{F9}", keyName: "Toggle sign", setup: ["1", "2"] },
+    { label: "=", keys: "=", keyName: "Equals", setup: ["1", "2", "Multiply", "4"] },
+    { label: "Backspace", keys: "{Backspace}", keyName: "Backspace", setup: ["1", "2", "3"] },
+    { label: "Escape", keys: "{Escape}", keyName: "Clear", setup: ["1", "2", "Multiply", "4"] },
+  ];
+
+  const PENDING_SETUP = ["1", "2", "Multiply", "4"];
+
+  const FOCUS_TARGETS = [{ focus: "the calculator region" }, { focus: "a key button" }];
+
+  function region() {
+    return screen.getByRole("region", { name: "Calculator" });
+  }
+
+  function focusElement(element: HTMLElement) {
+    act(() => {
+      element.focus();
+    });
+    expect(element).toHaveFocus();
+  }
+
+  function focusInside(focus: string) {
+    focusElement(focus === "the calculator region" ? region() : key("Toggle sign"));
+  }
+
+  function snapshot() {
+    const banner = screen.queryByRole("alert");
+    return {
+      expression: expressionText(),
+      result: text(result()),
+      pressed: pressedKeys(),
+      busy: isBusy(),
+      banner: banner === null ? null : text(banner),
+      requests: sentRequests(),
+    };
+  }
+
+  /** Renders a fresh app, clicks the setup keys, runs the action and returns the state around it. */
+  async function outcomeOf(setup: string[], action: (user: UserEvent) => Promise<void>) {
+    calculateMock.mockClear();
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await press(user, ...setup);
+    const before = snapshot();
+    await action(user);
+    const after = snapshot();
+    view.unmount();
+    return { before, after };
+  }
+
+  describe("F-30 shortcuts", () => {
+    describe.each(FOCUS_TARGETS)("with focus on $focus", ({ focus }) => {
+      it.each(SHORTCUTS)(
+        "F-30: '$label' acts exactly like the $keyName key",
+        async ({ keys, keyName, setup }) => {
+          const clicked = await outcomeOf(setup, (user) => press(user, keyName));
+          const typed = await outcomeOf(setup, async (user) => {
+            focusInside(focus);
+            await user.keyboard(keys);
+          });
+
+          expect(clicked.after).not.toEqual(clicked.before);
+          expect(typed.before).toEqual(clicked.before);
+          expect(typed.after).toEqual(clicked.after);
+        },
+      );
+
+      it.each([{ modifier: "Control" }, { modifier: "Meta" }, { modifier: "Alt" }])(
+        "F-30: nothing happens for any shortcut while $modifier is held",
+        async ({ modifier }) => {
+          const user = userEvent.setup();
+          render(<App />);
+          await press(user, ...PENDING_SETUP);
+          focusInside(focus);
+          const before = snapshot();
+
+          for (const { keys } of SHORTCUTS) {
+            await user.keyboard(`{${modifier}>}${keys}{/${modifier}}`);
+            expect(snapshot()).toEqual(before);
+          }
+          expect(calculateMock).not.toHaveBeenCalled();
+        },
+      );
+    });
+
+    it("F-30: a full calculation can be typed with shortcuts only", async () => {
+      const user = userEvent.setup();
+      const pending = deferNextCall();
+      render(<App />);
+      focusElement(region());
+
+      await user.keyboard("12*4=");
+
+      expect(expressionText()).toBe("12 × 4 =");
+      expect(isBusy()).toBe(true);
+      expect(sentRequests()).toEqual([{ operation: "multiply", operands: ["12", "4"] }]);
+
+      await settle(pending, { kind: "ok", result: "48" });
+
+      expect(text(result())).toBe("48");
+    });
+
+    it("F-30: nothing happens with focus on the document body", async () => {
+      const user = userEvent.setup();
+      render(<App />);
+      await press(user, ...PENDING_SETUP);
+      act(() => {
+        key("4").blur();
+      });
+      expect(document.body).toHaveFocus();
+      const before = snapshot();
+
+      for (const { keys } of SHORTCUTS) {
+        await user.keyboard(keys);
+        expect(snapshot()).toEqual(before);
+      }
+      await user.keyboard("{Enter}");
+      expect(snapshot()).toEqual(before);
+      expect(calculateMock).not.toHaveBeenCalled();
+    });
+
+    it("F-30: nothing happens with focus on a control outside the calculator", async () => {
+      const user = userEvent.setup();
+      render(
+        <>
+          <button type="button">Outside</button>
+          <App />
+        </>,
+      );
+      await press(user, ...PENDING_SETUP);
+      const outside = screen.getByRole("button", { name: "Outside" });
+      expect(region()).not.toContainElement(outside);
+      focusElement(outside);
+      const before = snapshot();
+
+      for (const { keys } of SHORTCUTS) {
+        await user.keyboard(keys);
+        expect(snapshot()).toEqual(before);
+      }
+      await user.keyboard("{Enter}");
+      expect(snapshot()).toEqual(before);
+      expect(outside).toHaveFocus();
+      expect(calculateMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("F-31 Enter", () => {
+    const ACTIVATION_KEYS = [
+      { name: "Enter", keys: "{Enter}" },
+      { name: "Space", keys: " " },
+    ];
+
+    it("F-31: Enter on the calculator container acts like = and sends one request", async () => {
+      const user = userEvent.setup();
+      deferNextCall();
+      render(<App />);
+      await press(user, ...PENDING_SETUP);
+      focusElement(region());
+
+      await user.keyboard("{Enter}");
+
+      expect(expressionText()).toBe("12 × 4 =");
+      expect(isBusy()).toBe(true);
+      expect(calculateMock).toHaveBeenCalledTimes(1);
+      expect(sentRequests()).toEqual([{ operation: "multiply", operands: ["12", "4"] }]);
+    });
+
+    it("F-31: Enter on the calculator container gives the same outcome as clicking =", async () => {
+      const clicked = await outcomeOf(PENDING_SETUP, (user) => press(user, "Equals"));
+      const typed = await outcomeOf(PENDING_SETUP, async (user) => {
+        focusElement(region());
+        await user.keyboard("{Enter}");
+      });
+
+      expect(typed.after).toEqual(clicked.after);
+    });
+
+    it.each(ACTIVATION_KEYS)(
+      "F-31: $name on the focused 7 key types 7 exactly once and sends nothing",
+      async ({ keys }) => {
+        const user = userEvent.setup();
+        render(<App />);
+        focusElement(key("7"));
+
+        await user.keyboard(keys);
+
+        expect(text(result())).toBe("7");
+        expect(expressionText()).toBe("");
+        expect(key("7")).toHaveFocus();
+        expect(calculateMock).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(ACTIVATION_KEYS)(
+      "F-31: $name on the focused 5 key with 12 × 4 pending types 5, not =",
+      async ({ keys }) => {
+        const user = userEvent.setup();
+        render(<App />);
+        await press(user, ...PENDING_SETUP);
+        focusElement(key("5"));
+
+        await user.keyboard(keys);
+
+        expect(text(result())).toBe("45");
+        expect(expressionText()).toBe("12 ×");
+        expect(isBusy()).toBe(false);
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(calculateMock).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(ACTIVATION_KEYS)(
+      "F-31: $name on the focused Multiply key selects only that operator",
+      async ({ keys }) => {
+        const user = userEvent.setup();
+        render(<App />);
+        await press(user, "1", "2");
+        focusElement(key("Multiply"));
+
+        await user.keyboard(keys);
+
+        expect(expressionText()).toBe("12 ×");
+        expect(text(result())).toBe("0");
+        expect(pressedKeys()).toEqual(["Multiply"]);
+        expect(calculateMock).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(ACTIVATION_KEYS)(
+      "F-31: $name on the focused Equals key sends exactly one request",
+      async ({ keys }) => {
+        const user = userEvent.setup();
+        deferNextCall();
+        render(<App />);
+        await press(user, ...PENDING_SETUP);
+        focusElement(key("Equals"));
+
+        await user.keyboard(keys);
+
+        expect(expressionText()).toBe("12 × 4 =");
+        expect(calculateMock).toHaveBeenCalledTimes(1);
+        expect(sentRequests()).toEqual([{ operation: "multiply", operands: ["12", "4"] }]);
+      },
+    );
+
+    it.each(ACTIVATION_KEYS)(
+      "F-31: $name on the focused Backspace key removes exactly one digit",
+      async ({ keys }) => {
+        const user = userEvent.setup();
+        render(<App />);
+        await press(user, "1", "2", "3");
+        focusElement(key("Backspace"));
+
+        await user.keyboard(keys);
+
+        expect(text(result())).toBe("12");
+      },
+    );
+  });
+});

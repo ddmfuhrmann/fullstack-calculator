@@ -1,6 +1,7 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer, useState, type KeyboardEvent } from "react";
 import { calculate, type CalculationOutcome } from "./api/client";
 import { initialState, reducer } from "./calculator/reducer";
+import { shortcutAction } from "./calculator/shortcuts";
 import type { Action } from "./calculator/types";
 import { Display } from "./components/Display";
 import { ErrorBanner } from "./components/ErrorBanner";
@@ -53,8 +54,16 @@ export function App() {
     };
   }, [loading]);
 
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    const action = shortcutAction(event, event.target === event.currentTarget);
+    if (action) {
+      event.preventDefault();
+      dispatch(action);
+    }
+  }
+
   return (
-    <section className="calculator" aria-label="Calculator">
+    <section className="calculator" aria-label="Calculator" tabIndex={0} onKeyDown={handleKeyDown}>
       <Display status={state.status} expression={state.expression} entry={state.entry} showProgress={showProgress} />
       <ErrorBanner error={state.error} onRetry={() => dispatch({ type: "retry" })} />
       <Keypad selectedOperator={state.operator} disabled={loading} onPress={dispatch} />
