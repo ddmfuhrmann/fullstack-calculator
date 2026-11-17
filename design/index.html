@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculator design handoff</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  /* ---------- Components (reference CSS for the implementation) ---------- */
+
+  .calculator {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: 100%;
+    max-width: var(--calc-max-width);
+    padding: var(--space-4);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .display {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding: var(--space-3) var(--space-2) var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+    overflow: hidden;
+  }
+  .display__expression {
+    min-height: 24px;
+    font: var(--font-expression);
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .display__result {
+    max-width: 100%;
+    font: var(--font-result);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    transition: opacity var(--duration-fast);
+  }
+  .display__result--md { font: var(--font-result-md); }
+  .display__result--sm {
+    font: var(--font-result-sm);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+  .display--idle .display__result,
+  .display--error .display__result { color: var(--color-text-muted); }
+  .display[aria-busy="true"] .display__result { opacity: 0.4; }
+  .display__progress {
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: 40%;
+    height: 2px;
+    background: var(--color-accent);
+    animation: progress 1s ease-in-out infinite alternate;
+  }
+  @keyframes progress {
+    from { transform: translateX(0); }
+    to { transform: translateX(150%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .display__progress { animation: none; width: 100%; }
+    .key { transition: none; }
+  }
+
+  .banner-slot { min-height: var(--banner-slot-height); }
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--banner-slot-height);
+    padding: var(--space-2) var(--space-3);
+    font: var(--font-banner);
+    border: 1px solid;
+    border-radius: var(--radius-banner);
+  }
+  .banner--validation {
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
+    border-color: var(--color-warning-border);
+  }
+  .banner--api {
+    background: var(--color-danger-bg);
+    color: var(--color-danger-text);
+    border-color: var(--color-danger-border);
+  }
+  .banner__icon { flex: none; width: 16px; height: 16px; }
+  .banner__message { flex: 1; }
+  .banner__action {
+    flex: none;
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    font: inherit;
+    font-weight: 600;
+    color: inherit;
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .banner__action:focus-visible {
+    outline: var(--focus-ring-width) solid currentColor;
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .keypad {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--key-gap);
+  }
+
+  .key {
+    height: var(--key-height);
+    padding: 0;
+    font: var(--font-key);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+    background: var(--color-key);
+    border: 0;
+    border-radius: var(--radius-key);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background var(--duration-fast), transform var(--duration-fast);
+  }
+  .key--wide { grid-column: span 2; height: var(--key-height-fn-row); }
+  .key:hover, .key.is-hover { background: var(--color-key-hover); }
+  .key:active, .key.is-pressed { background: var(--color-key-hover); transform: scale(0.97); }
+  .key:focus-visible, .key.is-focus {
+    outline: var(--focus-ring-width) solid var(--color-focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .key--fn { background: var(--color-key-fn); }
+  .key--fn:hover, .key--fn.is-hover,
+  .key--fn:active, .key--fn.is-pressed { background: var(--color-key-fn-hover); }
+
+  .key--op { background: var(--color-accent-soft); color: var(--color-accent-text); }
+  .key--op:hover, .key--op.is-hover,
+  .key--op:active, .key--op.is-pressed { background: var(--color-accent-soft-hover); }
+  .key--op[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--color-accent); }
+
+  .key--equals { background: var(--color-accent); color: var(--color-on-accent); }
+  .key--equals:hover, .key--equals.is-hover,
+  .key--equals:active, .key--equals.is-pressed { background: var(--color-accent-hover); }
+
+  .key[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* ---------- Handoff page chrome (not part of the product) ---------- */
+
+  body {
+    margin: 0;
+    padding: var(--space-5) var(--space-4) var(--space-6);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font: 400 15px/22px var(--font-sans);
+  }
+  .page { max-width: 1200px; margin: 0 auto; }
+  .page__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+  h1 { font-size: 22px; line-height: 28px; margin: 0; }
+  h2 { font-size: 16px; line-height: 24px; margin: var(--space-6) 0 var(--space-3); }
+  .theme-toggle {
+    min-height: 36px;
+    padding: 0 var(--space-3);
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .frames { display: flex; flex-wrap: wrap; gap: var(--space-5); align-items: flex-start; }
+  /* Frames pin the sizing tokens so every size shows at any window width. */
+  .frame {
+    --frame-width: 328px;
+    --calc-max-width: none;
+    --key-gap: 8px;
+    --key-height: 56px;
+    --key-height-fn-row: 48px;
+    --font-result: 500 40px/48px var(--font-sans);
+    --font-result-md: 500 32px/48px var(--font-sans);
+    --font-result-sm: 500 24px/32px var(--font-sans);
+    width: var(--frame-width);
+    max-width: 100%;
+  }
+  .frame__label { margin: 0 0 var(--space-2); font-size: 13px; color: var(--color-text-muted); }
+  .frame--480 { --frame-width: 400px; --key-gap: 10px; }
+  .frame--768 {
+    --frame-width: 420px;
+    --key-gap: 10px;
+    --key-height: 64px;
+    --key-height-fn-row: 52px;
+    --font-result: 500 48px/56px var(--font-sans);
+  }
+  .key-states { border-collapse: separate; border-spacing: var(--space-4) var(--space-3); margin-left: calc(var(--space-4) * -1); }
+  .key-states th { font-weight: 400; font-size: 13px; color: var(--color-text-muted); text-align: left; }
+  .key-states .key { width: 72px; }
+  .key-states__wrap { overflow-x: auto; background: var(--color-surface); border-radius: var(--radius-card); padding: var(--space-2) var(--space-4); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="page__header">
+    <h1>Calculator: states and components</h1>
+    <button class="theme-toggle" type="button" id="theme-toggle">Switch theme</button>
+  </header>
+
+  <h2>App states (360px viewport: 328px card)</h2>
+  <div class="frames" id="states"></div>
+
+  <h2>Key states</h2>
+  <div class="key-states__wrap">
+    <table class="key-states" id="key-states"></table>
+  </div>
+
+  <h2>Result length</h2>
+  <div class="frames" id="lengths"></div>
+
+  <h2>Breakpoints</h2>
+  <div class="frames" id="breakpoints"></div>
+</div>
+
+<script>
+  const KEYS = [
+    { label: "√x", name: "Square root", variant: "op", wide: true },
+    { label: "xʸ", name: "Power", variant: "op", wide: true },
+    { label: "AC", name: "Clear", variant: "fn" },
+    { label: "⌫", name: "Backspace", variant: "fn" },
+    { label: "%", name: "Percent of", variant: "op" },
+    { label: "÷", name: "Divide", variant: "op" },
+    { label: "7" }, { label: "8" }, { label: "9" },
+    { label: "×", name: "Multiply", variant: "op" },
+    { label: "4" }, { label: "5" }, { label: "6" },
+    { label: "−", name: "Subtract", variant: "op" },
+    { label: "1" }, { label: "2" }, { label: "3" },
+    { label: "+", name: "Add", variant: "op" },
+    { label: "±", name: "Toggle sign", variant: "fn" },
+    { label: "0" },
+    { label: ".", name: "Decimal point" },
+    { label: "=", name: "Equals", variant: "equals" },
+  ];
+
+  const ICON = '<svg class="banner__icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm-.75 3.5h1.5v5h-1.5v-5Zm.75 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/></svg>';
+
+  const STATES = [
+    { title: "Idle", display: "idle", expression: "", result: "0" },
+    { title: "Typing", display: "typing", expression: "12 ×", result: "4", pressed: "×" },
+    { title: "Loading (awaiting API)", display: "loading", expression: "12 × 4 =", result: "4", busy: true },
+    { title: "Result", display: "result", expression: "12 × 4 =", result: "48" },
+    { title: "Validation error", display: "error", expression: "12 ×", result: "0", pressed: "×",
+      banner: { kind: "validation", message: "Enter a second number." } },
+    { title: "API error: division by zero", display: "error", expression: "8 ÷ 0 =", result: "0",
+      banner: { kind: "api", message: "Can't divide by zero." } },
+    { title: "API error: square root of a negative", display: "error", expression: "√(−9) =", result: "−9",
+      banner: { kind: "api", message: "Can't take the square root of a negative number." } },
+    { title: "API error: network failure", display: "error", expression: "12 × 4 =", result: "4",
+      banner: { kind: "api", message: "Couldn't reach the server.", action: "Retry" } },
+  ];
+
+  function resultClass(result) {
+    if (result.length > 14) return " display__result--sm";
+    if (result.length > 10) return " display__result--md";
+    return "";
+  }
+
+  function key(k, state) {
+    const classes = ["key"];
+    if (k.variant) classes.push("key--" + k.variant);
+    if (k.wide) classes.push("key--wide");
+    const attrs = [];
+    if (k.name) attrs.push('aria-label="' + k.name + '"');
+    if (k.variant === "op" && !k.wide) attrs.push('aria-pressed="' + (state.pressed === k.label) + '"');
+    if (state.busy) attrs.push('aria-disabled="true"');
+    return '<button type="button" class="' + classes.join(" ") + '" ' + attrs.join(" ") + ">" + k.label + "</button>";
+  }
+
+  function banner(b) {
+    if (!b) return "";
+    const action = b.action ? '<button type="button" class="banner__action">' + b.action + "</button>" : "";
+    return '<div class="banner banner--' + b.kind + '" role="alert">' + ICON +
+      '<span class="banner__message">' + b.message + "</span>" + action + "</div>";
+  }
+
+  function calculator(state) {
+    return '<section class="calculator" aria-label="Calculator">' +
+      '<div class="display display--' + state.display + '"' + (state.busy ? ' aria-busy="true"' : "") + ">" +
+        '<div class="display__expression" aria-label="Expression">' + (state.expression || "&nbsp;") + "</div>" +
+        '<output class="display__result' + resultClass(state.result) + '" aria-live="polite">' + state.result + "</output>" +
+        (state.busy ? '<span class="display__progress" aria-hidden="true"></span>' : "") +
+      "</div>" +
+      '<div class="banner-slot">' + banner(state.banner) + "</div>" +
+      '<div class="keypad" role="group" aria-label="Keypad">' + KEYS.map((k) => key(k, state)).join("") + "</div>" +
+    "</section>";
+  }
+
+  function frame(title, state, modifier) {
+    return '<div class="frame ' + (modifier || "") + '"><p class="frame__label">' + title + "</p>" + calculator(state) + "</div>";
+  }
+
+  document.getElementById("states").innerHTML = STATES.map((s) => frame(s.title, s)).join("");
+
+  document.getElementById("lengths").innerHTML = [
+    frame("Up to 10 characters: 40px", { display: "result", expression: "2 ^ 32 =", result: "4294967296" }),
+    frame("11 to 14 characters: 32px", { display: "result", expression: "2 ^ 40 =", result: "1099511627776" }),
+    frame("Over 14 characters: 24px, wraps", { display: "result", expression: "2 ^ 100 =", result: "1267650600228229401496703205376" }),
+  ].join("");
+
+  const sample = STATES[3];
+  document.getElementById("breakpoints").innerHTML =
+    frame("Base, from 360px: full width", sample) +
+    frame("From 480px: centered card, 400px", sample, "frame--480") +
+    frame("From 768px: 420px card, taller keys", sample, "frame--768");
+
+  const VARIANTS = [
+    { title: "Digit", key: { label: "7" } },
+    { title: "Function", key: { label: "AC", variant: "fn" } },
+    { title: "Operator", key: { label: "×", variant: "op" } },
+    { title: "Equals", key: { label: "=", variant: "equals" } },
+  ];
+  const KEY_STATES = [
+    { title: "Default", cls: "" },
+    { title: "Hover", cls: "is-hover" },
+    { title: "Pressed", cls: "is-pressed" },
+    { title: "Focus", cls: "is-focus" },
+    { title: "Disabled", cls: "", disabled: true },
+    { title: "Selected", cls: "", selected: true },
+  ];
+  document.getElementById("key-states").innerHTML =
+    "<tr><th></th>" + KEY_STATES.map((s) => "<th>" + s.title + "</th>").join("") + "</tr>" +
+    VARIANTS.map((v) =>
+      "<tr><th>" + v.title + "</th>" + KEY_STATES.map((s) => {
+        if (s.selected && v.key.variant !== "op") return "<td></td>";
+        const cls = ["key", v.key.variant ? "key--" + v.key.variant : "", s.cls].join(" ");
+        const attrs = (s.disabled ? ' aria-disabled="true"' : "") + (s.selected ? ' aria-pressed="true"' : "");
+        return '<td><button type="button" tabindex="-1" class="' + cls + '"' + attrs + ">" + v.key.label + "</button></td>";
+      }).join("") + "</tr>"
+    ).join("");
+
+  document.getElementById("theme-toggle").addEventListener("click", () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme
+      ? root.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+  });
+</script>
+</body>
+</html>
