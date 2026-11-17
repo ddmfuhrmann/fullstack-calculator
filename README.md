@@ -115,17 +115,39 @@ keyboard-only calculation and a 360px viewport check.
 
 `make help` lists every target and the command behind it.
 
-Coverage from `make coverage` (statements):
+Coverage from `make coverage`. The full HTML reports are generated locally
+(`frontend/coverage/`, and `go tool cover -html=backend/coverage.out`).
 
-| Layer                                                | Coverage |
-| ---------------------------------------------------- | -------- |
-| Backend `internal/calculator`                        | 100.0% |
-| Backend `internal/httpapi`                           | 94.8% |
-| Backend total (includes `cmd/server` and the embed)  | 77.8% |
-| Frontend (reducer, API client, components, App)      | 100% |
+Backend, statements (`go tool cover -func`):
 
-`cmd/server` (timeouts, graceful shutdown) and the embedded file system have no
-unit tests; the end-to-end suite runs them in the real image.
+| Package / function                       | Coverage |
+| ---------------------------------------- | -------- |
+| `internal/calculator` (all 10 functions) | 100.0%   |
+| `internal/httpapi`                       | 94.8%    |
+| &nbsp;&nbsp;`calculate`                  | 94.1%    |
+| &nbsp;&nbsp;`fromCalculator`             | 83.3%    |
+| &nbsp;&nbsp;`NewAPI`, `NewRouter`, `decodeStrict`, `writeError`, `writeJSON` | 100.0% |
+| `cmd/server` (`main`, `run`)             | 0.0%     |
+| `internal/static` (`Files`)              | 0.0%     |
+| **Total**                                | **77.8%** |
+
+The uncovered lines in `internal/httpapi` are two defensive paths the handler
+tests cannot trigger: a body read error other than the size limit, and the
+`INTERNAL` fallback of the error mapping. `cmd/server` (timeouts, graceful
+shutdown) and the embedded file system have no unit tests; the end-to-end
+suite runs them in the real image.
+
+Frontend (Vitest, v8):
+
+| File                                   | Statements | Branches | Functions | Lines |
+| -------------------------------------- | ---------- | -------- | --------- | ----- |
+| `src/App.tsx`                          | 100%       | 92.3%    | 100%      | 100%  |
+| `src/api/client.ts`                    | 100%       | 100%     | 100%      | 100%  |
+| `src/calculator/format.ts`             | 100%       | 100%     | 100%      | 100%  |
+| `src/calculator/reducer.ts`            | 100%       | 98.63%   | 100%      | 100%  |
+| `src/calculator/shortcuts.ts`          | 100%       | 100%     | 100%      | 100%  |
+| `src/components/` (Display, ErrorBanner, Key, Keypad, keys) | 100% | 100% | 100% | 100% |
+| **All files**                          | **100%** (178/178) | **98.62%** (143/145) | **100%** (50/50) | **100%** (177/177) |
 
 ## Design decisions
 
