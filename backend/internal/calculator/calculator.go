@@ -12,6 +12,7 @@ import (
 var (
 	ErrUnknownOperation = errors.New("unknown operation")
 	ErrOperandCount     = errors.New("wrong number of operands")
+	ErrDivisionByZero   = errors.New("division by zero")
 )
 
 // Operation is one entry of the registry.
@@ -22,9 +23,11 @@ type Operation struct {
 }
 
 var operations = map[string]Operation{
-	"add":      {Arity: 2, apply: add},
-	"subtract": {Arity: 2, apply: subtract},
-	"multiply": {Arity: 2, apply: multiply},
+	"add":        {Arity: 2, apply: add},
+	"subtract":   {Arity: 2, apply: subtract},
+	"multiply":   {Arity: 2, apply: multiply},
+	"divide":     {Arity: 2, apply: divide},
+	"percentage": {Arity: 2, apply: percentage},
 }
 
 // Lookup returns the operation registered under name, or ErrUnknownOperation.

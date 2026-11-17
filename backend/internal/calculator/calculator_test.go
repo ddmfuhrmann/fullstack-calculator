@@ -52,6 +52,8 @@ func TestLookupKnownOperations(t *testing.T) {
 		{name: "add", wantArity: 2},
 		{name: "subtract", wantArity: 2},
 		{name: "multiply", wantArity: 2},
+		{name: "divide", wantArity: 2},
+		{name: "percentage", wantArity: 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
