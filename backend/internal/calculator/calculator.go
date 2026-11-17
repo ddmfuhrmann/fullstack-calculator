@@ -10,9 +10,11 @@ import (
 )
 
 var (
-	ErrUnknownOperation = errors.New("unknown operation")
-	ErrOperandCount     = errors.New("wrong number of operands")
-	ErrDivisionByZero   = errors.New("division by zero")
+	ErrUnknownOperation    = errors.New("unknown operation")
+	ErrOperandCount        = errors.New("wrong number of operands")
+	ErrDivisionByZero      = errors.New("division by zero")
+	ErrNegativeSqrt        = errors.New("square root of a negative number")
+	ErrUnsupportedExponent = errors.New("exponent must be an integer between -1000 and 1000")
 )
 
 // Operation is one entry of the registry.
@@ -28,6 +30,8 @@ var operations = map[string]Operation{
 	"multiply":   {Arity: 2, apply: multiply},
 	"divide":     {Arity: 2, apply: divide},
 	"percentage": {Arity: 2, apply: percentage},
+	"power":      {Arity: 2, apply: power},
+	"sqrt":       {Arity: 1, apply: sqrt},
 }
 
 // Lookup returns the operation registered under name, or ErrUnknownOperation.

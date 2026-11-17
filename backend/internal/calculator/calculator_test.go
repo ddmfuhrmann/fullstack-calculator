@@ -54,6 +54,8 @@ func TestLookupKnownOperations(t *testing.T) {
 		{name: "multiply", wantArity: 2},
 		{name: "divide", wantArity: 2},
 		{name: "percentage", wantArity: 2},
+		{name: "power", wantArity: 2},
+		{name: "sqrt", wantArity: 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -96,6 +98,8 @@ func TestRunOperandCount(t *testing.T) {
 		{name: "add with no operands", operation: "add", operands: nil},
 		{name: "add with one operand", operation: "add", operands: []string{"1"}},
 		{name: "add with three operands", operation: "add", operands: []string{"1", "2", "3"}},
+		{name: "sqrt with no operands", operation: "sqrt", operands: nil},
+		{name: "sqrt with two operands", operation: "sqrt", operands: []string{"9", "4"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
